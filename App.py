@@ -1,10 +1,3 @@
-import os
-import subprocess
-import sys
-
-# Ensure BeautifulSoup is installed
-subprocess.run([sys.executable, "-m", "pip", "install", "beautifulsoup4"], check=False)
-
 import streamlit as st
 import pandas as pd
 import numpy as np
