@@ -12,8 +12,25 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 import requests
 
-# Download NLTK data if not present
-nltk.download('punkt', quiet=True)
+st.set_page_config(
+    page_title="SEO Content Analyzer",
+    page_icon="Magnifying Glass",
+    layout="centered"
+)
+
+st.title("SEO Content Quality & Duplicate Detector")
+st.caption("Analyze any URL for SEO quality, readability, and duplicate content using AI.")
+
+# Download required NLTK data
+@st.cache_resource
+def download_nltk_data():
+    nltk.download('punkt', quiet=True)
+    nltk.download('punkt_tab', quiet=True)  # <-- THIS IS CRITICAL
+    nltk.download('wordnet', quiet=True)
+    nltk.download('stopwords', quiet=True)
+
+# Call it once
+download_nltk_data()
 
 # Predefined keywords for density calculation
 keywords = ['cybersecurity', 'AI', 'artificial intelligence', 'security', 'data']
@@ -71,7 +88,7 @@ def create_quality_label(row):
         return 'Medium'
 
 # Load and process data on app startup (cached for performance)
-@st.cache_data
+@st.cache_resource
 def load_and_process_data():
     df = pd.read_csv("data.csv")
     
@@ -109,6 +126,15 @@ def load_and_process_data():
 # Load data and model once
 df, embeddings_matrix, quality_model, tokenizer, bert_model = load_and_process_data()
 
+def interpret_readability(score):
+    if score >= 90: return "Very Easy (5th grade)"
+    elif score >= 80: return "Easy (6th grade)"
+    elif score >= 70: return "Fairly Easy (7th grade)"
+    elif score >= 60: return "Standard (8th–9th grade)"
+    elif score >= 50: return "Fairly Difficult (10th–12th grade)"
+    elif score >= 30: return "Difficult (College)"
+    else: return "Very Difficult (Graduate)"
+        
 # Analyze URL function (from your notebook)
 def analyze_url(url):
     try:
@@ -180,7 +206,56 @@ if st.button("Analyze"):
             st.error(result["error"])
         else:
             st.success("Analysis Complete!")
-            st.write("**Title:**", result["title"])
+            # === 1. Title ===
+            st.markdown(f"**Title:** {result['title']}")
+
+            # === 2. Word Count ===
+            st.markdown(f"**Word Count:** `{result['word_count']}`")
+
+            # === 3. Readability (with interpretation) ===
+            score = result["readability"]
+            level = interpret_readability(score)
+            st.markdown(f"**Readability Score:** `{score:.2f}` — *{level}*")
+
+            # === 4. Quality Label (color-coded) ===
+            quality = result["quality_label"]
+            color = {"High": "#2E8B57", "Medium": "#FFA500", "Low": "#DC143C"}.get(quality, "#808080")
+            st.markdown(f"**Quality Label:** <span style='color:{color};font-weight:bold'>{quality}</span>", unsafe_allow_html=True)
+
+            # === 5. Thin Content ===
+            thin_text = "Yes" if result["is_thin"] else "No"
+            thin_color = "#DC143C" if result["is_thin"] else "#2E8B57"
+            st.markdown(f"**Is Thin Content?** <span style='color:{thin_color}'>{thin_text}</span>", unsafe_allow_html=True)
+
+            # === 6. Similar Content (clickable links) ===
+            if result["similar_to"]:
+                st.markdown("**Similar Content Found:**")
+                for sim in result["similar_to"]:
+                    url = sim['url']
+                    sim_score = sim['similarity']
+                    st.markdown(f"• [{url}]({url}) *(Similarity: {sim_score:.2f})*")
+            else:
+                st.markdown("**No Similar Content Found.**")
+
+            # === 7. Export Button ===
+            if st.button("Download Report as CSV"):
+                report_data = {
+                    "URL": result["url"],
+                    "Title": result["title"],
+                    "Word Count": result["word_count"],
+                    "Readability Score": result["readability"],
+                    "Quality Label": result["quality_label"],
+                    "Is Thin Content": result["is_thin"],
+                    "Similar URLs": "; ".join([f"{s['url']} ({s['similarity']:.2f})" for s in result["similar_to"]])
+                }
+                report_df = pd.DataFrame([report_data])
+                csv = report_df.to_csv(index=False).encode()
+                st.download_button(
+                    label="Download CSV Report",
+                    data=csv,
+                    file_name=f"seo_analysis_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
             st.write("**Word Count:**", result["word_count"])
             st.write("**Readability Score:**", result["readability"])
             st.write("**Quality Label:**", result["quality_label"])
